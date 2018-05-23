@@ -1,0 +1,20 @@
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+SmartConfig	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+setup                   KEYWORD2
+queryTimezone           KEYWORD2
+getTimezoneStatus       KEYWORD2
+getFloorNumber          KEYWORD2
+getSSID                 KEYWORD2
+getTimezoneOffset       KEYWORD2
+getAutoHeatTemperature  KEYWORD2
+getAutoCoolTemperature  KEYWORD2
+getZipcode              KEYWORD2
+getOpenWeatherMapAPIKey KEYWORD2

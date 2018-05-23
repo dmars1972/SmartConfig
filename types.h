@@ -1,7 +1,6 @@
 #ifndef _SV_TYPES_
 #define _SV_TYPES_
 
-
 #define MAX_ROOMS 20
 #define MAX_VENTS_PER_ROOM 5
 #define VENT_NAME_SIZE 15
@@ -35,13 +34,17 @@ struct configStruct {
   bool hasTempSensor;
   char ssid[64];
   char password[64];
+
+#ifdef THERMOSTAT
   unsigned char autoHeatTemperature;
   unsigned char autoCoolTemperature;
   char zipcode[6];
   char googleMapsAPIKey[64];
   char openWeatherMapAPIKey[64];
+#endif
 };
 
+#ifdef THERMOSTAT
 struct WeatherStruct {
   int weather_id;  
   char description[20];
@@ -72,6 +75,7 @@ const int ROOM_EEPROM_START = sizeof(configStruct) + 1;
 const int VENT_EEPROM_START = ROOM_EEPROM_START + (sizeof(EEPROM_Room) * MAX_ROOMS) + 1;
 const int HEAT_SCHEDULE_EEPROM_START = VENT_EEPROM_START + ((VENT_NAME_SIZE * MAX_ROOMS) * MAX_VENTS_PER_ROOM) + 1;
 const int COOL_SCHEDULE_EEPROM_START = HEAT_SCHEDULE_EEPROM_START + (sizeof(struct Schedule) * MAX_SCHEDULE_SET_POINTS * 7);
+#endif
 
 #endif
 

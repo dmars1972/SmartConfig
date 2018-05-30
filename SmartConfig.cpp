@@ -5,7 +5,38 @@ SmartConfig::SmartConfig()
   return;
 }
 
+void SmartConfig::setConfig(configStruct cs)
+{
+  EEPROM.begin(4096);
+
+  EEPROM.put(0, cs);
+
+  EEPROM.commit();
+
+  EEPROM.end();
+
+  return;
+}
+
 void SmartConfig::setup()
+{
+  char h[15];
+  byte m[6];
+
+  WiFi.macAddress(m);
+
+  sprintf(h, "sv%02x%02x%02x%02x%02x%02x", 
+      m[0], 
+      m[1], 
+      m[2], 
+      m[3], 
+      m[4], 
+      m[5]);
+
+  setup(h);
+}
+
+void SmartConfig::setup(const char *hostname)
 {
   int pos = 0;
   char encryptedPassword[64];
@@ -16,35 +47,12 @@ void SmartConfig::setup()
   EEPROM.begin(4096);
   EEPROM.get(pos, c);
 
-/*
-  EEPROM.get(pos, otaIPAddress);
-  pos += sizeof(otaIPAddress);
-  EEPROM.get(pos, roomNumber);
-  pos += sizeof(roomNumber);
-  EEPROM.get(pos, floorNumber);
-  pos += sizeof(floorNumber);
-  EEPROM.get(pos, hasTempSensor);
-  pos += sizeof(hasTempSensor);
-  EEPROM.get(pos, ssid);
-  pos += sizeof(ssid);
-  EEPROM.get(pos, encryptedPassword);
-  pos += sizeof(encryptedPassword);
-  EEPROM.get(pos, autoHeatTemperature);
-  pos += sizeof(autoHeatTemperature);
-  EEPROM.get(pos, autoCoolTemperature);
-  pos += sizeof(autoCoolTemperature);
-  
-  EEPROM.get(pos, zipcode);
-  pos += sizeof(zipcode);
-  EEPROM.get(pos, googleMapsAPIKey);
-  pos += sizeof(googleMapsAPIKey);
-  EEPROM.get(pos, openWeatherMapAPIKey);
-*/
-
   spritz_setup(&s_ctx, key, sizeof(key));
   spritz_crypt(&s_ctx, (unsigned char *)c.password, sizeof(c.password), (unsigned char *)c.password);  
 
-  WiFi.hostname("thermostat");
+  Serial.println("Connecting to WiFi");
+
+  WiFi.hostname(hostname);
 
   WiFi.begin(c.ssid, (char *)c.password);
 
@@ -52,7 +60,23 @@ void SmartConfig::setup()
     delay(500);
   }
 
-  getLatLong();
+  Serial.println("Connected to WiFi");
+
+  sprintf(OTAIPAddress, "%d.%d.%d.%d", 
+      c.otaIPAddress[0], 
+      c.otaIPAddress[1], 
+      c.otaIPAddress[2], 
+      c.otaIPAddress[3]);
+
+  if(strcmp(hostname, "thermostat"))
+    return;
+
+  Serial.println("Getting location");
+  do {
+    getLatLong();
+  } while(!locationStatus);
+
+  Serial.println("Done");
 }
 
 void SmartConfig::getLatLong()
@@ -64,6 +88,8 @@ void SmartConfig::getLatLong()
   Serial.println("Getting Lat/Long...");
 
   sprintf(geocodeJSONRequest, "http://maps.googleapis.com/maps/api/geocode/json?address=%s", c.zipcode);
+
+  Serial.println(geocodeJSONRequest);
 
   http.begin(geocodeJSONRequest);
   httpCode = http.GET();
@@ -78,6 +104,12 @@ void SmartConfig::getLatLong()
     latitude = results0_geometry["bounds"]["northeast"]["lat"]; // 33.184899
     longitude = results0_geometry["bounds"]["northeast"]["lng"]; // -97.060992
 
+    locationStatus = true;
+  }
+
+  if(latitude == 0 && longitude == 0) {
+    locationStatus = false;
+    delay(500);
   }
 
   http.end();
@@ -109,11 +141,15 @@ void SmartConfig::queryTimezone(long int timestamp)
     return;
   }
 
+  Serial.println(url);
+
   client.print(String("GET ") + url + " HTTP/1.1\r\n" +
              "Host: " + host + "\r\n" +
              "User-Agent: BuildFailureDetectorESP8266\r\n" +
              "Connection: close\r\n\r\n");
 
+
+  client.setTimeout(200);
 
   while (client.connected()) {
     String line = client.readStringUntil('\n');
@@ -123,7 +159,7 @@ void SmartConfig::queryTimezone(long int timestamp)
 
   String line = client.readStringUntil('\r');
 
-//Serial.println(line);
+Serial.println(line);
 
   if (line.indexOf("\"status\" : \"OK\"") != -1) {
     JsonObject& root = jsonBuffer.parseObject(line);
@@ -143,4 +179,40 @@ void SmartConfig::queryTimezone(long int timestamp)
   Serial.print("Raw offset: ");
   Serial.println(rawOffset);
   return;
+}
+
+void SmartConfig::OTAUpdate(const char *currentVersion, const char *deviceType)
+{
+  static uint32_t lastCheck;
+  char OTAURL[128];
+  char OTAPATH[26] = "";
+
+  if(lastCheck != 0 && millis() < lastCheck + 60000)
+    return;
+
+  lastCheck = millis();
+
+  if(!strcmp(deviceType, "vent"))
+    strcpy(OTAPATH, "/svUpdate/svUpdate.php");
+  else if (!strcmp(deviceType, "thermostat"))
+    strcpy(OTAPATH, "/svUpdate/stUpdate.php");
+    
+  Serial.print("Checking for updates at ");
+  Serial.print(OTAIPAddress);
+  Serial.print(OTAPATH);
+  Serial.print(" ");
+  Serial.println(currentVersion);
+
+  t_httpUpdate_return ret = ESPhttpUpdate.update(OTAIPAddress, 80, OTAPATH, currentVersion);
+
+  switch (ret) {
+    case HTTP_UPDATE_FAILED:
+      Serial.printf("HTTP_UPDATE_FAILED Error (%d): %s\n",  ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
+      break;
+    case HTTP_UPDATE_NO_UPDATES:
+      Serial.println("No updates");
+      break;
+    case HTTP_UPDATE_OK:
+      break;
+  }
 }
